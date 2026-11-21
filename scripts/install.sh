@@ -32,6 +32,10 @@ fail() {
   exit 1
 }
 
+# The native Claude Code installer puts `claude` in ~/.local/bin, which non-interactive
+# shells (timers, setup scripts) usually lack because ~/.bashrc returns early for them.
+export PATH="${HOME}/.local/bin:${PATH}"
+
 for tool in python3 git claude; do
   command -v "$tool" >/dev/null 2>&1 || fail "required tool '$tool' not found on PATH; nothing changed"
 done
