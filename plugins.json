@@ -11,6 +11,7 @@
   },
   "plugins": [
     "claude-mem@thedotmack",
+    "php-lsp@claude-plugins-official",
     "superpowers@superpowers-marketplace"
   ]
 }
