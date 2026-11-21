@@ -1,7 +1,7 @@
 #!/bin/bash
 # Paste this into the claude.ai/code cloud environment's "Setup script".
 # Bump the rev number to force the cached snapshot (~7 days) to rebuild with the latest config.
-# rev 2
+# rev 3
 set -uo pipefail
 
 DIR=/opt/claude-config
@@ -15,7 +15,7 @@ record_failure() {
 
 rm -rf "$DIR"
 if ! GIT_TERMINAL_PROMPT=0 git clone -q --depth 1 https://github.com/radamath/claude-config.git "$DIR"; then
-  record_failure "clone failed: give the Claude GitHub App access to radamath/claude-config"
+  record_failure "clone failed: https://github.com/radamath/claude-config.git must be public and reachable"
   exit 0
 fi
 # Never block session start: problems are recorded in ~/.claude-config/last-install.json.
