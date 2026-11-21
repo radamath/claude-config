@@ -5,12 +5,14 @@ from pathlib import Path
 
 from ccsync import status
 from ccsync.export import ExportError, SyncBusy, export
+from ccsync.install import run_install
 
 EXIT_BUSY = 3
 REPO_DIR = Path(__file__).resolve().parent.parent
 STATE_DIR_NAME = ".claude-config"
 # Windows records sync results, Linux targets record install results.
 SYNC_STATUS = "last-sync.json"
+INSTALL_STATUS = "last-install.json"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -40,6 +42,21 @@ def cmd_export(home: Path) -> int:
     return 0
 
 
+def cmd_install(home: Path, target: str) -> int:
+    status_path = home / STATE_DIR_NAME / INSTALL_STATUS
+    try:
+        problems = run_install(REPO_DIR, home, target)
+    except (RuntimeError, OSError, ValueError) as exc:
+        problems = [f"install aborted: {exc}"]
+    if problems:
+        for problem in problems:
+            print(f"ccsync: {problem}", file=sys.stderr)
+        status.write(status_path, False, "; ".join(problems))
+        return 1
+    status.write(status_path, True, "ok")
+    return 0
+
+
 def cmd_status(home: Path, args) -> int:
     path = home / STATE_DIR_NAME / args.file
     if args.notice:
@@ -60,8 +77,7 @@ def main(argv=None) -> int:
         return cmd_export(home)
     if args.command == "status":
         return cmd_status(home, args)
-    print("ccsync: install not implemented yet", file=sys.stderr)
-    return 2
+    return cmd_install(home, args.target)
 
 
 if __name__ == "__main__":

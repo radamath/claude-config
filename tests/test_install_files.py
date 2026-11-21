@@ -102,5 +102,25 @@ class InstallFilesTest(unittest.TestCase):
         self.assertEqual(result["mcps"], {"x": "h"})
 
 
+class RunInstallTest(unittest.TestCase):
+    def test_run_install_reads_repo_files_and_reports_skipped_mcp(self):
+        import json
+        from unittest import mock
+        from ccsync import install as inst
+
+        root = make_tree(dict(REPO, **{
+            "repo/targets.json": json.dumps({"vps": {}}),
+            "repo/plugins.json": json.dumps({"marketplaces": {}, "plugins": []}),
+            "repo/mcp.json": json.dumps({"api": {"command": "x", "env": {"K": "${MCP_API_K}"}}}),
+            "home/.claude-config/secrets.env": "OTHER=1\n",
+        }))
+        (root / "home/.claude").mkdir()
+        with mock.patch.object(inst, "install_plugins", return_value=[]) as plugins:
+            problems = inst.run_install(root / "repo", root / "home", "vps")
+        self.assertEqual(problems, ["mcp api skipped: missing secret(s) in ~/.claude-config/secrets.env"])
+        self.assertTrue((root / "home/.claude/skills/ship/SKILL.md").exists())
+        self.assertEqual(plugins.call_args.args[1], "vps")
+
+
 if __name__ == "__main__":
     unittest.main()

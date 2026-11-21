@@ -1,11 +1,16 @@
 """Linux side: apply the repo to ~/.claude on a target (vps or cloud)."""
 import filecmp
+import hashlib
+import json
+import os
 import shutil
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
 from ccsync import manifest
 from ccsync.compose import compose, target_overlay_name
+from ccsync.mcp import expand, load_env_file, strip_windows_wrapper
 
 CLAUDE_MD = "CLAUDE.md"
 
@@ -104,3 +109,116 @@ def install_files(repo: Path, claude_home: Path, state_dir: Path, target: str, t
     data["files"] = sorted([CLAUDE_MD] + desired)
     manifest.save(manifest_path, data)
     return data
+
+
+CLAUDE = "claude"
+
+
+def _excluded(targets_cfg: dict, target: str, key: str) -> set:
+    return set(targets_cfg.get(target, {}).get(key, []))
+
+
+def _list_json(run, args: list) -> list:
+    result = run([CLAUDE] + args)
+    if result.returncode != 0:
+        raise RuntimeError(f"`claude {' '.join(args)}` failed: {result.stderr.strip()}")
+    return json.loads(result.stdout or "[]")
+
+
+def _marketplace_ref(source: dict) -> str:
+    return source.get("repo") or source.get("url") or source.get("path") or ""
+
+
+def install_plugins(plugins_cfg: dict, target: str, targets_cfg: dict, data: dict, run) -> list:
+    """Mirror the repo's plugin list; only uninstalls plugins this tool installed. Returns errors."""
+    errors = []
+    installed = {p["id"] for p in _list_json(run, ["plugin", "list", "--json"])}
+    markets = {m["name"] for m in _list_json(run, ["plugin", "marketplace", "list", "--json"])}
+    wanted = [p for p in plugins_cfg.get("plugins", []) if p not in _excluded(targets_cfg, target, "exclude_plugins")]
+    owned = set(data.get("plugins", []))
+    now_owned = set()
+
+    for pid in wanted:
+        if pid in installed:
+            now_owned.add(pid)
+            continue
+        market = pid.partition("@")[2]
+        source = plugins_cfg.get("marketplaces", {}).get(market)
+        if source and market not in markets:
+            result = run([CLAUDE, "plugin", "marketplace", "add", _marketplace_ref(source)])
+            if result.returncode != 0:
+                errors.append(f"marketplace {market}: {result.stderr.strip()}")
+                continue
+            markets.add(market)
+        result = run([CLAUDE, "plugin", "install", pid, "--scope", "user"])
+        if result.returncode != 0:
+            errors.append(f"plugin {pid}: {result.stderr.strip()}")
+            continue
+        now_owned.add(pid)
+
+    for pid in sorted(owned - set(wanted)):
+        if pid in installed:
+            result = run([CLAUDE, "plugin", "uninstall", pid, "--scope", "user"])
+            if result.returncode != 0:
+                errors.append(f"uninstall {pid}: {result.stderr.strip()}")
+                now_owned.add(pid)
+
+    data["plugins"] = sorted(now_owned)
+    return errors
+
+
+def _config_hash(server: dict) -> str:
+    return hashlib.sha256(json.dumps(server, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def install_mcps(mcp_cfg: dict, env: dict, target: str, targets_cfg: dict, data: dict, run) -> list:
+    """Mirror user-scope MCP servers. Returns names skipped for missing secrets."""
+    skipped = []
+    owned = dict(data.get("mcps", {}))
+    wanted = {n: s for n, s in mcp_cfg.items() if n not in _excluded(targets_cfg, target, "exclude_mcps")}
+
+    for name, server in sorted(wanted.items()):
+        resolved = expand(strip_windows_wrapper(server), env)
+        if resolved is None:
+            skipped.append(name)
+            continue
+        digest = _config_hash(resolved)
+        if owned.get(name) == digest:
+            continue
+        run([CLAUDE, "mcp", "remove", "-s", "user", name])
+        # Config goes through stdin so secrets never appear in the process list.
+        result = run([CLAUDE, "mcp", "add-json", "-s", "user", name, "-"], input=json.dumps(resolved))
+        if result.returncode == 0:
+            owned[name] = digest
+        else:
+            skipped.append(name)
+
+    for name in sorted(set(owned) - set(wanted)):
+        run([CLAUDE, "mcp", "remove", "-s", "user", name])
+        del owned[name]
+
+    data["mcps"] = owned
+    return skipped
+
+
+def _subprocess_runner(args: list, input=None):
+    return subprocess.run(args, input=input, capture_output=True, text=True, check=False)
+
+
+def _read_json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+
+def run_install(repo: Path, home: Path, target: str, run=_subprocess_runner) -> list:
+    """Apply files, plugins and MCPs. Returns human-readable problems (empty = clean run)."""
+    claude_home, state_dir = home / ".claude", home / ".claude-config"
+    targets_cfg = _read_json(repo / "targets.json")
+    data = install_files(repo, claude_home, state_dir, target, targets_cfg)
+
+    problems = install_plugins(_read_json(repo / "plugins.json"), target, targets_cfg, data, run)
+    env = {**os.environ, **load_env_file(state_dir / "secrets.env")}
+    skipped = install_mcps(_read_json(repo / "mcp.json"), env, target, targets_cfg, data, run)
+    problems += [f"mcp {n} skipped: missing secret(s) in ~/.claude-config/secrets.env" for n in skipped]
+
+    manifest.save(claude_home / manifest.MANIFEST_NAME, data)
+    return problems

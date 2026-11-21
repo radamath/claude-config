@@ -39,6 +39,30 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("secret in x:1", err)
 
+    def test_install_success_writes_ok_status(self):
+        with mock.patch.object(cli, "run_install", return_value=[]) as inst:
+            code, _, _ = run(["install", "--target", "vps"], self.home)
+        self.assertEqual(code, 0)
+        self.assertEqual(inst.call_args.args[1:], (self.home, "vps"))
+        data = cli.status.read(self.home / ".claude-config" / "last-install.json")
+        self.assertTrue(data["ok"])
+
+    def test_install_problems_exit_1_and_fail_status(self):
+        with mock.patch.object(cli, "run_install", return_value=["plugin x@y: boom"]):
+            code, _, err = run(["install", "--target", "cloud"], self.home)
+        self.assertEqual(code, 1)
+        self.assertIn("plugin x@y: boom", err)
+        data = cli.status.read(self.home / ".claude-config" / "last-install.json")
+        self.assertFalse(data["ok"])
+
+    def test_install_crash_writes_fail_status(self):
+        with mock.patch.object(cli, "run_install", side_effect=RuntimeError("`claude plugin list --json` failed")):
+            code, _, err = run(["install", "--target", "vps"], self.home)
+        self.assertEqual(code, 1)
+        data = cli.status.read(self.home / ".claude-config" / "last-install.json")
+        self.assertFalse(data["ok"])
+        self.assertIn("plugin list", data["message"])
+
     def test_status_set_fail_then_notice(self):
         self.assertEqual(run(["status", "--set-fail", "push rejected"], self.home)[0], 0)
         code, out, _ = run(["status", "--notice"], self.home)
