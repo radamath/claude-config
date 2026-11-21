@@ -1,0 +1,14 @@
+{
+  "cloud": {
+    "exclude_agents": [],
+    "exclude_mcps": [],
+    "exclude_plugins": ["claude-mem@thedotmack"],
+    "exclude_skills": []
+  },
+  "vps": {
+    "exclude_agents": [],
+    "exclude_mcps": [],
+    "exclude_plugins": [],
+    "exclude_skills": []
+  }
+}
