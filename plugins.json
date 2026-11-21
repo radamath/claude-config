@@ -1,0 +1,16 @@
+{
+  "marketplaces": {
+    "superpowers-marketplace": {
+      "repo": "obra/superpowers-marketplace",
+      "source": "github"
+    },
+    "thedotmack": {
+      "repo": "thedotmack/claude-mem",
+      "source": "github"
+    }
+  },
+  "plugins": [
+    "claude-mem@thedotmack",
+    "superpowers@superpowers-marketplace"
+  ]
+}
