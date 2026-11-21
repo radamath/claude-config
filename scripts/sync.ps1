@@ -20,8 +20,10 @@ function Write-Log([string]$Message) {
 
 function Invoke-Native([string]$Exe, [string[]]$Arguments) {
     # PS 5.1 wraps native stderr in ErrorRecords; "$_" keeps just the text.
-    $lines = & $Exe @Arguments 2>&1 | ForEach-Object { "$_" }
-    return [pscustomobject]@{ Code = $LASTEXITCODE; Output = (($lines | Where-Object { $_ }) -join "`n").Trim() }
+    # Blank stderr lines stringify to the exception type name; drop them.
+    $lines = & $Exe @Arguments 2>&1 | ForEach-Object { "$_" } |
+        Where-Object { $_ -and $_ -ne 'System.Management.Automation.RemoteException' }
+    return [pscustomobject]@{ Code = $LASTEXITCODE; Output = ($lines -join "`n").Trim() }
 }
 
 function Set-Status([bool]$Ok, [string]$Message) {
