@@ -1,5 +1,6 @@
 """Command line entry point: python -m ccsync <export|install|status>."""
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -27,6 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
     group.add_argument("--notice", action="store_true")
     group.add_argument("--set-ok", action="store_true")
     group.add_argument("--set-fail", metavar="MESSAGE")
+    st.add_argument("--hook", action="store_true", help="with --notice: print SessionStart hook JSON")
     return parser
 
 
@@ -61,7 +63,12 @@ def cmd_status(home: Path, args) -> int:
     path = home / STATE_DIR_NAME / args.file
     if args.notice:
         message = status.notice(path)
-        if message:
+        if message and args.hook:
+            print(json.dumps({
+                "systemMessage": message,
+                "hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": message},
+            }, ensure_ascii=False))
+        elif message:
             print(message)
     elif args.set_ok:
         status.write(path, True, "ok")

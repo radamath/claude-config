@@ -69,6 +69,19 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("push rejected", out)
 
+    def test_status_notice_hook_emits_session_start_json(self):
+        import json
+        run(["status", "--set-fail", "push rejected"], self.home)
+        code, out, _ = run(["status", "--notice", "--hook"], self.home)
+        data = json.loads(out)
+        self.assertIn("push rejected", data["systemMessage"])
+        self.assertEqual(data["hookSpecificOutput"]["hookEventName"], "SessionStart")
+        self.assertIn("push rejected", data["hookSpecificOutput"]["additionalContext"])
+
+    def test_status_notice_hook_silent_when_ok(self):
+        run(["status", "--set-ok"], self.home)
+        self.assertEqual(run(["status", "--notice", "--hook"], self.home)[1], "")
+
     def test_status_notice_silent_when_ok(self):
         run(["status", "--set-ok"], self.home)
         self.assertEqual(run(["status", "--notice"], self.home)[1], "")
