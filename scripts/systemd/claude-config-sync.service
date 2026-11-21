@@ -1,9 +1,9 @@
 [Unit]
 Description=Pull claude-config and apply it to ~/.claude
-Wants=network-online.target
-After=network-online.target
 
 [Service]
 Type=oneshot
-# Login shell so ~/.local/bin (claude) is on PATH.
-ExecStart=/bin/bash -lc 'cd "$HOME/.claude-config/repo" && git pull --ff-only -q && exec scripts/install.sh --target vps'
+# A hung run must not stall the timer forever (oneshot has no start timeout by default).
+TimeoutStartSec=5min
+# Login shell so ~/.local/bin (claude) is on PATH. install.sh records pull failures in the status file.
+ExecStart=/bin/bash -lc 'exec "$HOME/.claude-config/repo/scripts/install.sh" --target vps --pull'

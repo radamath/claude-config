@@ -1,18 +1,22 @@
 #!/usr/bin/env bash
 # Apply this repo to ~/.claude on a Linux target (VPS timer or cloud setup script).
-# Usage: scripts/install.sh --target vps|cloud
+# Usage: scripts/install.sh --target vps|cloud [--pull]
+#   --pull  fast-forward the repo first (VPS timer); a failed pull is recorded in the status file.
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STATE_DIR="${HOME}/.claude-config"
 STATUS_FILE="${STATE_DIR}/last-install.json"
+PULL_TIMEOUT_SECONDS=120
 
-usage() { echo "usage: $0 --target vps|cloud" >&2; exit 2; }
+usage() { echo "usage: $0 --target vps|cloud [--pull]" >&2; exit 2; }
 
 TARGET=""
+PULL=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --target) TARGET="${2:-}"; shift 2 ;;
+    --target) [[ $# -ge 2 ]] || usage; TARGET="$2"; shift 2 ;;
+    --pull) PULL=1; shift ;;
     *) usage ;;
   esac
 done
@@ -33,4 +37,13 @@ for tool in python3 git claude; do
 done
 
 cd "$REPO_DIR"
+
+if [[ "$PULL" -eq 1 ]]; then
+  # Never block on prompts or a dead network inside a timer.
+  export GIT_TERMINAL_PROMPT=0
+  export GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=20"
+  timeout "$PULL_TIMEOUT_SECONDS" git pull --ff-only -q \
+    || fail "git pull failed (offline, revoked deploy key or non-fast-forward history); config not updated"
+fi
+
 exec python3 -m ccsync install --target "$TARGET"
