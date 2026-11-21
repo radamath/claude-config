@@ -91,8 +91,8 @@ class InstallMcpsTest(unittest.TestCase):
     def test_mcp_skipped_when_secret_missing(self):
         run = FakeRunner()
         m = manifest()
-        skipped = install_mcps(MCP, {}, "vps", {}, m, run)
-        self.assertEqual(skipped, ["api"])
+        problems = install_mcps(MCP, {}, "vps", {}, m, run)
+        self.assertEqual(problems, ["mcp api skipped: missing secret(s) in ~/.claude-config/secrets.env"])
         added = [a for a in run.commands() if "add-json" in a]
         self.assertEqual([a[5] for a in added], ["docs"])
 
@@ -125,6 +125,23 @@ class InstallMcpsTest(unittest.TestCase):
         install_mcps({"docs": MCP["docs"]}, {}, "vps", {}, m, run)
         self.assertIn(["claude", "mcp", "remove", "-s", "user", "gone"], run.commands())
         self.assertNotIn("gone", m["mcps"])
+
+    def test_unowned_same_name_mcp_backed_up_before_replace(self):
+        import tempfile
+        from pathlib import Path
+        backup = Path(tempfile.mkdtemp()) / "backup"
+        existing = {"docs": {"type": "http", "url": "https://mine.example/mcp"}}
+        install_mcps({"docs": MCP["docs"]}, {}, "vps", {}, manifest(), FakeRunner(),
+                     existing=existing, backup_dir=backup)
+        saved = json.loads((backup / "mcp-docs.json").read_text())
+        self.assertEqual(saved, existing["docs"])
+
+    def test_failed_add_reported_with_stderr_and_not_owned(self):
+        m = manifest(mcps={"docs": "stale-digest"})
+        run = FakeRunner(fail=["add-json"])
+        problems = install_mcps({"docs": MCP["docs"]}, {}, "vps", {}, m, run)
+        self.assertEqual(problems, ["mcp docs: add failed: boom"])
+        self.assertNotIn("docs", m["mcps"])
 
     def test_commands_are_arg_lists_not_strings(self):
         run = FakeRunner()

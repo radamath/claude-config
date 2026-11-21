@@ -193,34 +193,52 @@ def _config_hash(server: dict) -> str:
     return hashlib.sha256(json.dumps(server, sort_keys=True).encode("utf-8")).hexdigest()
 
 
-def install_mcps(mcp_cfg: dict, env: dict, target: str, targets_cfg: dict, data: dict, run) -> list:
-    """Mirror user-scope MCP servers. Returns names skipped for missing secrets."""
-    skipped = []
+def _backup_mcp(name: str, config: dict, backup_dir: Path) -> None:
+    """Save a user's own MCP config (may hold secrets) before it is replaced."""
+    backup_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path = backup_dir / f"mcp-{name}.json"
+    path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+    path.chmod(0o600)
+
+
+def install_mcps(mcp_cfg: dict, env: dict, target: str, targets_cfg: dict, data: dict, run,
+                 existing: dict = None, backup_dir: Path = None) -> list:
+    """Mirror user-scope MCP servers. Returns human-readable problems.
+
+    `existing` is the target's current user-scope mcpServers; same-name servers this tool
+    does not own are saved to `backup_dir` before being replaced.
+    """
+    problems = []
+    existing = existing or {}
     owned = dict(data.get("mcps", {}))
     wanted = {n: s for n, s in mcp_cfg.items() if n not in _excluded(targets_cfg, target, "exclude_mcps")}
 
     for name, server in sorted(wanted.items()):
         resolved = expand(strip_windows_wrapper(server), env)
         if resolved is None:
-            skipped.append(name)
+            problems.append(f"mcp {name} skipped: missing secret(s) in ~/.claude-config/secrets.env")
             continue
         digest = _config_hash(resolved)
         if owned.get(name) == digest:
             continue
+        if name not in owned and name in existing and backup_dir is not None:
+            _backup_mcp(name, existing[name], backup_dir)
         run([CLAUDE, "mcp", "remove", "-s", "user", name])
         # Config goes through stdin so secrets never appear in the process list.
         result = run([CLAUDE, "mcp", "add-json", "-s", "user", name, "-"], input=json.dumps(resolved))
         if result.returncode == 0:
             owned[name] = digest
         else:
-            skipped.append(name)
+            # Forget the old digest so the next run retries even if the config reverts.
+            owned.pop(name, None)
+            problems.append(f"mcp {name}: add failed: {result.stderr.strip()}")
 
     for name in sorted(set(owned) - set(wanted)):
         run([CLAUDE, "mcp", "remove", "-s", "user", name])
         del owned[name]
 
     data["mcps"] = owned
-    return skipped
+    return problems
 
 
 def _subprocess_runner(args: list, input=None):
@@ -239,8 +257,10 @@ def run_install(repo: Path, home: Path, target: str, run=_subprocess_runner) -> 
 
     problems = install_plugins(_read_json(repo / "plugins.json"), target, targets_cfg, data, run)
     env = {**os.environ, **load_env_file(state_dir / "secrets.env")}
-    skipped = install_mcps(_read_json(repo / "mcp.json"), env, target, targets_cfg, data, run)
-    problems += [f"mcp {n} skipped: missing secret(s) in ~/.claude-config/secrets.env" for n in skipped]
+    existing = _read_json(home / ".claude.json").get("mcpServers", {})
+    backup_dir = state_dir / "backup" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    problems += install_mcps(_read_json(repo / "mcp.json"), env, target, targets_cfg, data, run,
+                             existing=existing, backup_dir=backup_dir)
 
     manifest.save(claude_home / manifest.MANIFEST_NAME, data)
     return problems
