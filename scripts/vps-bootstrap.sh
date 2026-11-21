@@ -29,6 +29,8 @@ EOF
 }
 
 setup() {
+  # Native installer location; missing from non-interactive shells (see install.sh).
+  export PATH="${HOME}/.local/bin:${PATH}"
   for tool in git python3 claude systemctl; do
     command -v "$tool" >/dev/null 2>&1 || { echo "missing required tool: $tool" >&2; exit 1; }
   done
