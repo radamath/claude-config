@@ -10,6 +10,7 @@
     }
   },
   "plugins": [
+    "claude-code-setup@claude-plugins-official",
     "claude-md-management@claude-plugins-official",
     "claude-mem@thedotmack",
     "code-simplifier@claude-plugins-official",
@@ -17,6 +18,7 @@
     "hookify@claude-plugins-official",
     "php-lsp@claude-plugins-official",
     "security-guidance@claude-plugins-official",
+    "serena@claude-plugins-official",
     "session-report@claude-plugins-official",
     "superpowers@superpowers-marketplace"
   ]
