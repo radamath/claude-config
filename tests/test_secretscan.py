@@ -50,6 +50,11 @@ class SecretScanTest(unittest.TestCase):
         findings = self.scan_files({".git/config": f"{GH_PAT}\n", ".superpowers/x": f"{GH_PAT}\n"})
         self.assertEqual(findings, [])
 
+    def test_scan_limited_to_included_paths(self):
+        root = make_tree({"skills/a/SKILL.md": f"{GH_PAT}\n", "tests/t.py": f"{GH_PAT}\n", "mcp.json": f"{GH_PAT}\n"})
+        findings = scan(root, root / ".secretscan-allow", include=["skills", "mcp.json", "missing"])
+        self.assertEqual(sorted(f.path for f in findings), ["mcp.json", "skills/a/SKILL.md"])
+
     def test_placeholder_not_flagged(self):
         findings = self.scan_files({"mcp.json": '{"env": {"API_TOKEN": "${MCP_X_API_TOKEN}"}}\n'})
         self.assertEqual(findings, [])

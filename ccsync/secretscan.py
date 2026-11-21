@@ -47,16 +47,20 @@ def _allowed(rel: str, text: str, rules: list) -> bool:
     return any(fnmatch.fnmatch(rel, g) and rx.search(text) for g, rx in rules)
 
 
-def _iter_files(root: Path):
-    for p in sorted(root.rglob("*")):
-        if p.is_file() and not SKIP_DIRS.intersection(p.relative_to(root).parts):
-            yield p
+def _iter_files(root: Path, include=None):
+    bases = [root / name for name in include] if include is not None else [root]
+    for base in bases:
+        candidates = [base] if base.is_file() else sorted(base.rglob("*")) if base.is_dir() else []
+        for p in candidates:
+            if p.is_file() and not SKIP_DIRS.intersection(p.relative_to(root).parts):
+                yield p
 
 
-def scan(root: Path, allow_file: Path) -> list:
+def scan(root: Path, allow_file: Path, include=None) -> list:
+    """Scan `root` (or only the `include` paths relative to it) for likely secrets."""
     rules = _load_allowlist(allow_file)
     findings = []
-    for path in _iter_files(root):
+    for path in _iter_files(root, include):
         rel = path.relative_to(root).as_posix()
         if path == allow_file:
             continue

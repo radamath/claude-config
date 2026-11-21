@@ -119,7 +119,9 @@ def export(claude_home: Path, claude_json: Path, repo: Path, state_dir: Path) ->
             raise ExportError(str(exc)) from exc
         _write_json(repo / "mcp.json", redact(_read_json(claude_json).get("mcpServers", {})))
 
-        findings = scan(repo, repo / ".secretscan-allow")
+        # Only content that came from ~/.claude; the repo's own code is reviewed in git.
+        exported = list(CLAUDE_PARTS) + list(MIRRORED_DIRS) + ["plugins.json", "mcp.json"]
+        findings = scan(repo, repo / ".secretscan-allow", include=exported)
         if findings:
             listed = "; ".join(f"{f.path}:{f.line}" for f in findings)
             raise ExportError(f"possible secrets found, nothing committed: {listed}")

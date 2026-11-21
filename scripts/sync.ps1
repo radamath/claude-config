@@ -19,8 +19,9 @@ function Write-Log([string]$Message) {
 }
 
 function Invoke-Native([string]$Exe, [string[]]$Arguments) {
-    $output = & $Exe @Arguments 2>&1 | Out-String
-    return [pscustomobject]@{ Code = $LASTEXITCODE; Output = $output.Trim() }
+    # PS 5.1 wraps native stderr in ErrorRecords; "$_" keeps just the text.
+    $lines = & $Exe @Arguments 2>&1 | ForEach-Object { "$_" }
+    return [pscustomobject]@{ Code = $LASTEXITCODE; Output = (($lines | Where-Object { $_ }) -join "`n").Trim() }
 }
 
 function Set-Status([bool]$Ok, [string]$Message) {
