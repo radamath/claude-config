@@ -1,0 +1,9 @@
+[Unit]
+Description=Pull claude-config and apply it to ~/.claude
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Login shell so ~/.local/bin (claude) is on PATH.
+ExecStart=/bin/bash -lc 'cd "$HOME/.claude-config/repo" && git pull --ff-only -q && exec scripts/install.sh --target vps'
