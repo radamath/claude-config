@@ -11,7 +11,9 @@
   },
   "plugins": [
     "claude-mem@thedotmack",
+    "context7@claude-plugins-official",
     "php-lsp@claude-plugins-official",
+    "session-report@claude-plugins-official",
     "superpowers@superpowers-marketplace"
   ]
 }
