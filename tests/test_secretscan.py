@@ -55,6 +55,15 @@ class SecretScanTest(unittest.TestCase):
         findings = scan(root, root / ".secretscan-allow", include=["skills", "mcp.json", "missing"])
         self.assertEqual(sorted(f.path for f in findings), ["mcp.json", "skills/a/SKILL.md"])
 
+    def test_detects_json_quoted_secret_keys(self):
+        content = '{"apiKey": "abcdefghijklmnop1234"}\n{"password": "hunter2hunter2xx"}\n'
+        findings = self.scan_files({"skills/a/config.json": content})
+        self.assertEqual([f.line for f in findings], [1, 2])
+
+    def test_detects_key_query_param_and_url_credentials(self):
+        findings = self.scan_files({"a.md": "https://h/x?apikey=ABCDEFGH12345678\nhttps://user:tok3nvalue@host/x\n"})
+        self.assertEqual([f.line for f in findings], [1, 2])
+
     def test_placeholder_not_flagged(self):
         findings = self.scan_files({"mcp.json": '{"env": {"API_TOKEN": "${MCP_X_API_TOKEN}"}}\n'})
         self.assertEqual(findings, [])

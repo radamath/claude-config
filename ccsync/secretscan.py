@@ -20,7 +20,10 @@ CONTENT_PATTERNS = [
     re.compile(r"AKIA[0-9A-Z]{16}"),
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
     re.compile(r"CLAUDE_CODE_OAUTH_TOKEN\s*=\s*\S+"),
-    re.compile(r"(?i)(api[_-]?key|token|secret|password)\s*[=:]\s*['\"]?[A-Za-z0-9_\-]{16,}"),
+    re.compile(r"(?i)(api[_-]?key|token|secret|password)['\"]?\s*[=:]\s*['\"]?[A-Za-z0-9_\-]{16,}"),
+    # Secrets in URL query strings and URL userinfo (scheme://user:pass@host).
+    re.compile(r"(?i)[?&][a-z0-9_-]*(key|token|secret|password|sig)[a-z0-9_-]*=[^&\s$]{8,}"),
+    re.compile(r"(?i)\b[a-z][a-z0-9+.-]*://[^/\s:@$]+:[^/\s@$]+@"),
 ]
 
 # Filenames that must never be committed, regardless of content.

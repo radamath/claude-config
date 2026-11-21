@@ -29,6 +29,26 @@ class McpTest(unittest.TestCase):
         self.assertNotIn("real-secret-value", repr(out))
         self.assertEqual(SERVERS["my-api"]["env"]["x.token"], "real-secret-value", "input must not be mutated")
 
+    def test_redact_secret_flag_args(self):
+        servers = {"s": {"command": "npx", "args": ["srv", "--api-key", "sk_live_x", "--token=abc", "--port", "80"]}}
+        args = redact(servers)["s"]["args"]
+        self.assertEqual(args, ["srv", "--api-key", "${MCP_S_ARG_API_KEY}", "--token=${MCP_S_ARG_TOKEN}", "--port", "80"])
+
+    def test_redact_url_query_and_userinfo(self):
+        servers = {"r": {"type": "http", "url": "https://u:p@h.example/mcp?apikey=XYZ&mode=a"}}
+        url = redact(servers)["r"]["url"]
+        self.assertNotIn("XYZ", url)
+        self.assertNotIn("u:p@", url)
+        self.assertIn("apikey=${MCP_R_URL_APIKEY}", url)
+        self.assertIn("mode=${MCP_R_URL_MODE}", url)
+        self.assertIn("${MCP_R_URL_USERINFO}@h.example", url)
+
+    def test_expand_fills_args_and_url(self):
+        servers = {"r": {"command": "x", "args": ["--token=abc"], "url": "https://h/?k=v"}}
+        out = expand(redact(servers)["r"], {"MCP_R_ARG_TOKEN": "abc", "MCP_R_URL_K": "v"})
+        self.assertEqual(out["args"], ["--token=abc"])
+        self.assertEqual(out["url"], "https://h/?k=v")
+
     def test_placeholder_name_sanitized(self):
         self.assertIn("${MCP_MY_API_X_TOKEN}", redact(SERVERS)["my-api"]["env"].values())
 
