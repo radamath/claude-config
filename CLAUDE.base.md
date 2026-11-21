@@ -8,6 +8,14 @@ Standart: "çalışıyor" yetmez. Doğru, güvenli, okunur ve doğrulanmış ola
 - Kısa ve net ol. Ne yaptığını, neyi doğruladığını, neyi doğrulayamadığını açıkça söyle.
 - Test geçmediyse, bir adımı atladıysan, bir şeyden emin değilsen bunu gizleme.
 
+## Token Ekonomisi (varsayılan)
+- Yanıtlar kısa: önce sonuç, dolgu/tekrar/özür yok; teknik bilgi eksiksiz kalır. Detayı kullanıcı isterse ver.
+- Kodu tam okumak yerine önce hedefli ara: LSP (php-lsp), serena sembol araması, Grep; dosyanın yalnız ilgili aralığını oku.
+- Kütüphane/API sorusunda tahmin etme; context7 ile güncel dokümana bak.
+- Paralel iş: bağımsız ve büyük alt işleri `team-lead` ile en az sayıda agent'a böl; küçük işte agent açma (her agent bağlamı sıfırdan yükler).
+- Aynı bilgiyi tekrar okuma/türetme; claude-mem'de varsa oradan al.
+- Gereksiz kod yazma: istenmeyen soyutlama, kullanılmayan parametre, spekülatif özellik yok; değişiklik sonrası `code-simplifier` ile sadeleştir.
+
 ## Çalışma Disiplini
 1. **Önce oku, sonra yaz.** Bir dosyayı değiştirmeden önce onu ve onu çağıran yerleri oku. Mevcut stile, yapıya ve kütüphanelere uy; yeni bağımlılığı gerekçesiz ekleme.
 2. **Kök nedeni bul.** Semptomu yamalama. Hata düzeltmelerinde "neden oldu" sorusunu cevapla, sonra düzelt.
