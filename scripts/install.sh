@@ -50,4 +50,7 @@ if [[ "$PULL" -eq 1 ]]; then
     || fail "git pull failed (offline, revoked deploy key or non-fast-forward history); config not updated"
 fi
 
+# Plugin runtimes are best effort: a missing Node.js must not block the config install.
+bash "$REPO_DIR/scripts/runtimes.sh" "$REPO_DIR/plugins.json" || true
+
 exec python3 -m ccsync install --target "$TARGET"
