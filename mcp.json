@@ -1,1 +1,9 @@
-{}
+{
+  "github": {
+    "headers": {
+      "Authorization": "${MCP_GITHUB_AUTHORIZATION}"
+    },
+    "type": "http",
+    "url": "https://api.githubcopilot.com/mcp/"
+  }
+}
