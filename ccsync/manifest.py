@@ -7,8 +7,14 @@ MANIFEST_NAME = ".claude-config-manifest"
 
 def load(path: Path) -> dict:
     data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-    # files: relpaths under ~/.claude; plugins: plugin ids; mcps: server name -> config hash
-    return {"files": data.get("files", []), "plugins": data.get("plugins", []), "mcps": data.get("mcps", {})}
+    # files: relpaths under ~/.claude; hashes: relpath -> content hash as installed (detects local edits);
+    # plugins: plugin ids; mcps: server name -> config hash
+    return {
+        "files": data.get("files", []),
+        "hashes": data.get("hashes", {}),
+        "plugins": data.get("plugins", []),
+        "mcps": data.get("mcps", {}),
+    }
 
 
 def save(path: Path, data: dict) -> None:

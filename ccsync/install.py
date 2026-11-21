@@ -1,5 +1,4 @@
 """Linux side: apply the repo to ~/.claude on a target (vps or cloud)."""
-import filecmp
 import hashlib
 import json
 import os
@@ -13,10 +12,6 @@ from ccsync.compose import compose, target_overlay_name
 from ccsync.mcp import expand, load_env_file, strip_windows_wrapper
 
 CLAUDE_MD = "CLAUDE.md"
-
-
-def _timestamp() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
 def _desired_items(repo: Path, excludes: dict) -> list:
@@ -36,16 +31,18 @@ def _desired_items(repo: Path, excludes: dict) -> list:
     return sorted(items)
 
 
-def _same_tree(a: Path, b: Path) -> bool:
-    if a.is_file() or b.is_file():
-        return a.is_file() and b.is_file() and filecmp.cmp(a, b, shallow=False)
-    cmp = filecmp.dircmp(a, b)
-    if cmp.left_only or cmp.right_only or cmp.funny_files:
-        return False
-    _, mismatch, errors = filecmp.cmpfiles(a, b, cmp.common_files, shallow=False)
-    if mismatch or errors:
-        return False
-    return all(_same_tree(a / d, b / d) for d in cmp.common_dirs)
+def _tree_hash(path: Path) -> str:
+    """Content hash of a file or a whole directory tree (paths + bytes); '' if missing."""
+    if path.is_file():
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    if not path.is_dir():
+        return ""
+    digest = hashlib.sha256()
+    for p in sorted(path.rglob("*")):
+        if p.is_file():
+            digest.update(p.relative_to(path).as_posix().encode("utf-8") + b"\0")
+            digest.update(hashlib.sha256(p.read_bytes()).digest())
+    return digest.hexdigest()
 
 
 def _remove(path: Path) -> None:
@@ -69,42 +66,67 @@ def _backup(path: Path, rel: str, backup_root: Path) -> None:
     shutil.move(str(path), str(dest))
 
 
-def _install_claude_md(repo: Path, claude_home: Path, target: str, owned: set, backup_root: Path) -> None:
+class _Installer:
+    """One install run: replaces only what it owns and backs up anything a person changed."""
+
+    def __init__(self, claude_home: Path, state_dir: Path, data: dict):
+        self.home = claude_home
+        self.owned = set(data["files"])
+        self.hashes = data["hashes"]
+        # Microseconds keep two runs in the same second from nesting backups.
+        self.backup_root = state_dir / "backup" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+
+    def needs_backup(self, rel: str) -> bool:
+        """Not ours, or ours but edited on this machine since we installed it."""
+        return rel not in self.owned or self.hashes.get(rel) != _tree_hash(self.home / rel)
+
+    def clear(self, rel: str) -> None:
+        dst = self.home / rel
+        if not (dst.exists() or dst.is_symlink()):
+            return
+        if self.needs_backup(rel):
+            _backup(dst, rel, self.backup_root)
+        else:
+            _remove(dst)
+
+    def place_text(self, rel: str, text: str) -> None:
+        dst = self.home / rel
+        if not (dst.exists() and dst.read_bytes() == text.encode("utf-8")):
+            self.clear(rel)
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_text(text, encoding="utf-8", newline="\n")
+        self.hashes[rel] = _tree_hash(dst)
+
+    def place_copy(self, rel: str, src: Path) -> None:
+        dst = self.home / rel
+        if _tree_hash(src) != _tree_hash(dst):
+            self.clear(rel)
+            _copy(src, dst)
+        self.hashes[rel] = _tree_hash(dst)
+
+    def drop(self, rel: str) -> None:
+        self.clear(rel)
+        self.hashes.pop(rel, None)
+
+
+def _composed_claude_md(repo: Path, target: str) -> str:
     base = (repo / "CLAUDE.base.md").read_text(encoding="utf-8")
     overlay_path = repo / target_overlay_name(target)
     overlay = overlay_path.read_text(encoding="utf-8") if overlay_path.exists() else ""
-    composed = compose(base, overlay)
-    dst = claude_home / CLAUDE_MD
-    if dst.exists():
-        if dst.read_text(encoding="utf-8") == composed:
-            return
-        if CLAUDE_MD not in owned:
-            _backup(dst, CLAUDE_MD, backup_root)
-    dst.write_text(composed, encoding="utf-8", newline="\n")
+    return compose(base, overlay)
 
 
 def install_files(repo: Path, claude_home: Path, state_dir: Path, target: str, targets_cfg: dict) -> dict:
     manifest_path = claude_home / manifest.MANIFEST_NAME
     data = manifest.load(manifest_path)
-    owned = set(data["files"])
-    backup_root = state_dir / "backup" / _timestamp()
+    run = _Installer(claude_home, state_dir, data)
     desired = _desired_items(repo, targets_cfg.get(target, {}))
 
-    _install_claude_md(repo, claude_home, target, owned, backup_root)
-
+    run.place_text(CLAUDE_MD, _composed_claude_md(repo, target))
     for rel in desired:
-        src, dst = repo / rel, claude_home / rel
-        if dst.exists() or dst.is_symlink():
-            if rel not in owned:
-                _backup(dst, rel, backup_root)
-            elif _same_tree(src, dst):
-                continue
-            else:
-                _remove(dst)
-        _copy(src, dst)
-
-    for rel in sorted(owned - set(desired) - {CLAUDE_MD}):
-        _remove(claude_home / rel)
+        run.place_copy(rel, repo / rel)
+    for rel in sorted(run.owned - set(desired) - {CLAUDE_MD}):
+        run.drop(rel)
 
     data["files"] = sorted([CLAUDE_MD] + desired)
     manifest.save(manifest_path, data)

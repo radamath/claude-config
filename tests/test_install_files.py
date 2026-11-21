@@ -86,6 +86,44 @@ class InstallFilesTest(unittest.TestCase):
         self.assertEqual((self.home / "skills/ship/SKILL.md").read_text(), "ship v2\n")
         self.assertFalse((self.home / "skills/ship/ref/notes.md").exists())
 
+    def test_locally_edited_owned_item_backed_up_before_replace(self):
+        self.install()
+        (self.home / "skills/ship/SKILL.md").write_text("edited on vps\n")
+        (self.home / "CLAUDE.md").write_text("edited claude on vps\n")
+        self.install()
+        self.assertEqual((self.home / "skills/ship/SKILL.md").read_text(), "ship v1\n")
+        self.assertEqual(sorted(self.backups()), ["CLAUDE.md", "skills/ship/SKILL.md", "skills/ship/ref/notes.md"])
+
+    def test_edited_owned_item_removed_from_repo_is_backed_up(self):
+        self.install()
+        (self.home / "skills/bug-hunt/SKILL.md").write_text("edited on vps\n")
+        for p in (self.repo / "skills/bug-hunt").iterdir():
+            p.unlink()
+        (self.repo / "skills/bug-hunt").rmdir()
+        self.install()
+        self.assertFalse((self.home / "skills/bug-hunt").exists())
+        self.assertEqual(self.backups(), ["skills/bug-hunt/SKILL.md"])
+
+    def test_repo_update_of_unedited_item_makes_no_backup(self):
+        self.install()
+        (self.repo / "skills/ship/SKILL.md").write_text("ship v2\n")
+        (self.repo / "CLAUDE.base.md").write_text("# Base v2\n")
+        self.install()
+        self.assertEqual((self.home / "skills/ship/SKILL.md").read_text(), "ship v2\n")
+        self.assertEqual(self.backups(), [])
+
+    def test_two_runs_in_same_second_do_not_nest_backups(self):
+        (self.home / "skills/ship").mkdir(parents=True)
+        (self.home / "skills/ship/SKILL.md").write_text("a\n")
+        self.install()
+        (self.home / "skills/ship/SKILL.md").write_text("b\n")
+        self.install()
+        runs = sorted((self.state / "backup").iterdir())
+        self.assertEqual(len(runs), 2)
+        self.assertEqual((runs[0] / "skills/ship/SKILL.md").read_text(), "a\n")
+        self.assertEqual((runs[1] / "skills/ship/SKILL.md").read_text(), "b\n")
+        self.assertFalse((runs[1] / "skills/ship/ship").exists())
+
     def test_idempotent_second_run_no_changes(self):
         self.install()
         files = [p for p in self.home.rglob("*") if p.is_file() and p.name != manifest.MANIFEST_NAME]
