@@ -136,6 +136,39 @@ class ExportTest(unittest.TestCase):
             self.run_export(root)
         self.assertEqual((root / ".claude/CLAUDE.md").read_text(), "old global rules\n")
 
+    def test_missing_source_dir_does_not_wipe_repo_copy(self):
+        import shutil
+        root = windows_home()
+        self.run_export(root)
+        shutil.rmtree(root / ".claude/skills")
+        with self.assertRaises(ExportError) as ctx:
+            self.run_export(root)
+        self.assertIn("skills", str(ctx.exception))
+        self.assertTrue((root / "repo/skills/ship/SKILL.md").exists())
+
+    def test_missing_optional_dir_never_exported_is_fine(self):
+        root = windows_home()
+        self.run_export(root)
+        self.assertFalse((root / "repo/commands").exists())
+
+    def test_lock_vanishing_during_stale_check_is_handled(self):
+        from unittest import mock
+        root = windows_home()
+        state = root / "state"
+        state.mkdir()
+        (state / "sync.lock").write_text("x")
+        real_stat = type(state).stat
+
+        def flaky_stat(self, *a, **k):
+            if self.name == "sync.lock":
+                self.unlink(missing_ok=True)
+                raise FileNotFoundError(self)
+            return real_stat(self, *a, **k)
+
+        with mock.patch.object(type(state), "stat", flaky_stat):
+            self.assertTrue(acquire_lock(state))
+        release_lock(state)
+
     def test_secret_finding_raises_and_names_file(self):
         root = windows_home({".claude/skills/leak/SKILL.md": f"use {GH_PAT}\n"})
         with self.assertRaises(ExportError) as ctx:

@@ -38,7 +38,8 @@ def cmd_export(home: Path) -> int:
     except SyncBusy as exc:
         print(f"ccsync: {exc}", file=sys.stderr)
         return EXIT_BUSY
-    except ExportError as exc:
+    except (ExportError, OSError, ValueError) as exc:
+        # One readable line: the SessionStart notice shows only the first line.
         print(f"ccsync: export failed: {exc}", file=sys.stderr)
         return 1
     return 0

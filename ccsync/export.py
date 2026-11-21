@@ -31,8 +31,11 @@ class SyncBusy(ExportError):
 def acquire_lock(state_dir: Path) -> bool:
     state_dir.mkdir(parents=True, exist_ok=True)
     lock = state_dir / LOCK_NAME
-    if lock.exists() and time.time() - lock.stat().st_mtime > LOCK_STALE_SECONDS:
-        lock.unlink()
+    try:
+        if time.time() - lock.stat().st_mtime > LOCK_STALE_SECONDS:
+            lock.unlink(missing_ok=True)
+    except FileNotFoundError:
+        pass  # no lock, or another sync just released it
     try:
         with open(lock, "x", encoding="utf-8") as fh:
             fh.write(str(time.time()))
@@ -86,10 +89,13 @@ def _compose_claude_md(claude_home: Path, state_dir: Path) -> None:
 
 def _mirror_dir(src: Path, dst: Path, exclude=frozenset()) -> None:
     """Make dst an exact copy of src; follows symlinks so linked skills ship real files."""
+    if not src.is_dir():
+        if dst.exists() and any(dst.iterdir()):
+            # A vanished source (unmounted drive, broken junction) must not delete it everywhere.
+            raise ExportError(f"{src} is missing but the repo has {dst.name}/; refusing to delete it on all targets")
+        return
     if dst.exists():
         shutil.rmtree(dst)
-    if not src.is_dir():
-        return
     dst.mkdir(parents=True)
     for entry in sorted(src.iterdir()):
         if entry.name in exclude:

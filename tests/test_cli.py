@@ -39,6 +39,14 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("secret in x:1", err)
 
+    def test_export_os_and_value_errors_return_1_with_message(self):
+        for exc in (PermissionError("skills/x locked"), ValueError("bad settings.json")):
+            with mock.patch.object(cli, "export", side_effect=exc):
+                code, _, err = run(["export"], self.home)
+            self.assertEqual(code, 1)
+            self.assertIn(str(exc), err)
+            self.assertNotIn("Traceback", err)
+
     def test_install_success_writes_ok_status(self):
         with mock.patch.object(cli, "run_install", return_value=[]) as inst:
             code, _, _ = run(["install", "--target", "vps"], self.home)
